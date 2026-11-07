@@ -241,9 +241,8 @@ function toTrack(song) {
     artists: singers
       .map((singer) => ({ id: singer.mid || (singer.id == null ? "" : String(singer.id)), name: singer.name || "" }))
       .filter((singer) => singer.name),
-    album: albumMid || albumName ? { id: String(albumMid || album.id || ""), name: albumName } : undefined,
+    album: albumMid || albumName ? { id: String(albumMid || album.id || ""), name: albumName, imageUrl: cover(album.pmid || albumMid, "album") } : undefined,
     duration: Math.round(Number(raw.interval || 0) * 1000),
-    imageUrl: cover(albumMid, "album"),
   };
 }
 

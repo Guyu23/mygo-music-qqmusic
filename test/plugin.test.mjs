@@ -245,6 +245,7 @@ test("search, suggestions, recommendations, listening modes, history, lyrics and
   assert.equal(found.tracks[0].id, "0039MnYb0qxYhV");
   assert.equal(found.tracks[0].artists[0].name, "周杰伦");
   assert.equal(found.tracks[0].duration, 269000);
+  assert.equal(found.tracks[0].album.imageUrl, "https://y.gtimg.cn/music/photo_new/T002R800x800M000000MkMni19ClKG.jpg");
   const artists = await plugin.search({ query: "周杰伦", kind: "artists", offset: 0 });
   assert.equal(artists.artists[0].id, "0025NhlN2yWrP4");
   assert.deepEqual(await plugin.suggest({ query: "晴" }), ["晴天", "周杰伦"]);
