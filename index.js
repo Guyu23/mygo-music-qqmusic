@@ -576,7 +576,42 @@ async function forYou() {
 }
 
 function ptuiArgs(text) {
-  return [...String(text).matchAll(/'([^']*)'/g)].map((match) => match[1]);
+  return [...String(text).matchAll(/'([^']*)'/g)].map((match) => jsUnescape(match[1]));
+}
+
+function jsUnescape(value) {
+  return String(value)
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(Number.parseInt(hex, 16)))
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(Number.parseInt(hex, 16)))
+    .replace(/\\\//g, "/")
+    .replace(/\\'/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function rawQuery(url, key) {
+  const query = String(url).split("?")[1]?.split("#")[0] || "";
+  for (const part of query.split("&")) {
+    const index = part.indexOf("=");
+    if (index < 0) continue;
+    const name = decodeURIComponent(part.slice(0, index));
+    if (name !== key) continue;
+    return decodeURIComponent(part.slice(index + 1).replace(/\+/g, "%2B"));
+  }
+  return "";
+}
+
+function deviceId() {
+  const saved = host.storage.get("deviceId");
+  if (typeof saved === "string" && /^\d{10}$/.test(saved)) return saved;
+  let next = "";
+  for (let i = 0; i < 10; i++) next += String((Math.random() * 10) | 0);
+  host.storage.set("deviceId", next);
+  return next;
+}
+
+function failLogin(step) {
+  console.error(`QQ Music sign-in stopped at ${step}`);
+  problem("signIn", "QQ Music didn't finish signing in.");
 }
 
 async function pollQr(qrsig) {
@@ -608,20 +643,39 @@ async function pollQr(qrsig) {
 }
 
 async function exchange(checkUrl) {
+  const uin = rawQuery(checkUrl, "uin");
+  const ptsigx = rawQuery(checkUrl, "ptsigx");
+  if (!uin || !ptsigx) failLogin("callback");
+  const check = new URL("https://ssl.ptlogin2.graph.qq.com/check_sig");
+  const query = {
+    uin,
+    pttype: "1",
+    service: "ptqrlogin",
+    nodirect: "0",
+    ptsigx,
+    s_url: "https://graph.qq.com/oauth2.0/login_jump",
+    ptlang: "2052",
+    ptredirect: "100",
+    aid: "716027609",
+    daid: "383",
+    j_later: "0",
+    low_login_hour: "0",
+    regmaster: "0",
+    pt_login_type: "3",
+    pt_aid: "0",
+    pt_aaid: "16",
+    pt_light: "0",
+    pt_3rd_aid: CLIENT_ID,
+  };
+  for (const [key, value] of Object.entries(query)) check.searchParams.set(key, value);
+  const checked = await request(check, {
+    redirect: "manual",
+    headers: { "user-agent": UA, referer: PT_REFERER },
+  });
   const jar = new Map();
-  let current = checkUrl;
-  for (let hop = 0; hop < 5; hop++) {
-    const response = await request(current, {
-      redirect: "manual",
-      headers: { "user-agent": UA, referer: PT_REFERER, cookie: jarHeader(jar) },
-    });
-    absorbCookies(response, jar);
-    const location = response.headers.get("location");
-    if (!location || response.status < 300 || response.status >= 400) break;
-    current = new URL(location, current).href;
-  }
+  absorbCookies(checked, jar);
   const pSkey = jar.get("p_skey");
-  if (!pSkey) problem("signIn", "QQ Music didn't finish signing in.");
+  if (!pSkey) failLogin("p_skey");
   const form = new URLSearchParams({
     response_type: "code",
     client_id: CLIENT_ID,
@@ -660,11 +714,11 @@ async function exchange(checkUrl) {
     const body = await authorized.text();
     code = body.match(/[?&]code=([^&"']+)/)?.[1] || "";
   }
-  if (!code) problem("signIn", "QQ Music didn't finish signing in.");
-  const data = await musicu("QQConnectLogin.LoginServer", "QQLogin", { code });
-  const musicid = data?.musicid ?? data?.musicID ?? data?.uin;
+  if (!code) failLogin("oauth code");
+  const data = await loginWithCode(code);
+  const musicid = data?.musicid ?? data?.musicID ?? data?.str_musicid ?? data?.uin;
   const musickey = data?.musickey ?? data?.qm_keyst ?? data?.key;
-  if (musicid == null || !musickey) problem("signIn", "QQ Music didn't finish signing in.");
+  if (musicid == null || musicid === "" || !musickey) failLogin("musickey");
   const session = load();
   session.musicid = String(musicid);
   session.musickey = String(musickey);
@@ -722,6 +776,41 @@ export async function signOut() {
   session.imageUrl = "";
   save();
   invalidateLibrary();
+}
+
+async function loginWithCode(code) {
+  const body = {
+    comm: {
+      ct: 11,
+      cv: 13020508,
+      v: 13020508,
+      tmeAppID: "qqmusic",
+      format: "json",
+      inCharset: "utf-8",
+      outCharset: "utf-8",
+      uid: deviceId(),
+      tmeLoginType: "2",
+    },
+    req_0: {
+      module: "QQConnectLogin.LoginServer",
+      method: "QQLogin",
+      param: { code },
+    },
+  };
+  const response = await request(JSON_GATEWAY, {
+    method: "POST",
+    headers: {
+      "user-agent": UA,
+      referer: "https://y.qq.com/",
+      origin: "https://y.qq.com",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await readJson(response);
+  const payload = json.req_0;
+  if (payload?.code === 1000 || json.code === 1000 || !payload || payload.code !== 0) failLogin("QQLogin");
+  return payload.data || {};
 }
 
 async function profile() {

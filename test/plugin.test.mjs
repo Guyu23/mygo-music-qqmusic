@@ -4,6 +4,7 @@ import test from "node:test";
 const storage = new Map();
 const prompts = [];
 const writes = [];
+const seen = {};
 
 globalThis.host = {
   storage: {
@@ -44,6 +45,7 @@ globalThis.fetch = async (input, init = {}) => {
     return jsonResponse("ptuiCB('0','0','https://ssl.ptlogin2.graph.qq.com/check_sig?uin=123&ptsigx=abc','0','登录成功！', '')");
   }
   if (path === "/check_sig") {
+    seen.check = url.href;
     return jsonResponse("ok", { headers: { "set-cookie": "p_skey=psk-1; Path=/; Domain=.qq.com" } });
   }
   if (path === "/oauth2.0/authorize") {
@@ -57,6 +59,7 @@ globalThis.fetch = async (input, init = {}) => {
     const module = call?.module || "";
     const method = call?.method || "";
     if (module === "QQConnectLogin.LoginServer") {
+      seen.login = JSON.parse(init.body);
       return jsonResponse({ code: 0, req_0: { code: 0, data: { musicid: "123456", musickey: "key-1", nick: "周韬" } } });
     }
     if (method === "GetAll") {
@@ -200,6 +203,11 @@ test("QQ scan sign-in stores the session and never asks for a cookie", async () 
   assert.equal(saved.musicid, "123456");
   assert.equal(saved.musickey, "key-1");
   assert.equal(saved.cookie, undefined);
+  assert.match(seen.check, /[?&]uin=123(?:&|$)/);
+  assert.match(seen.check, /[?&]ptsigx=abc(?:&|$)/);
+  assert.equal(seen.login.comm.tmeLoginType, "2");
+  assert.equal(seen.login.comm.ct, 11);
+  assert.equal(seen.login.req_0.param.code, "oauth-code");
 });
 
 test("playlists keep liked songs fixed and collected lists saved", async () => {
