@@ -46,9 +46,21 @@ globalThis.fetch = async (input, init = {}) => {
   }
   if (path === "/check_sig") {
     seen.check = url.href;
-    return jsonResponse("ok", { headers: { "set-cookie": "p_skey=psk-1; Path=/; Domain=.qq.com" } });
+    const headers = new Headers();
+    headers.append("location", "https://graph.qq.com/oauth2.0/login_jump");
+    headers.append("set-cookie", "p_skey=psk-1; Path=/; Domain=.qq.com; Secure; HttpOnly");
+    headers.append("set-cookie", "p_skey=; Path=/; Domain=qq.com; Max-Age=0");
+    headers.append("set-cookie", "uin=o123; Path=/; Domain=.qq.com");
+    return new Response("", { status: 302, headers });
+  }
+  if (path === "/oauth2.0/login_jump") {
+    seen.loginJump = url.href;
+    return jsonResponse("", {
+      headers: { "set-cookie": "p_skey=; Path=/; Domain=.qq.com; Max-Age=0" },
+    });
   }
   if (path === "/oauth2.0/authorize") {
+    seen.authorizeCookie = init.headers?.cookie || "";
     return jsonResponse("", {
       status: 302,
       headers: { location: "https://y.qq.com/portal/wx_redirect.html?code=oauth-code&state=state" },
@@ -193,7 +205,9 @@ globalThis.fetch = async (input, init = {}) => {
 
 test("QQ scan sign-in stores the session and never asks for a cookie", async () => {
   assert.equal(await plugin.account(), null);
-  await plugin.signIn();
+  const signedIn = await plugin.signIn();
+  assert.equal(signedIn.name, "周韬");
+  assert.equal(signedIn.page, "me");
   assert.equal(prompts[0].qr, "http://txz.qq.com/p?k=scan-token&f=716027609");
   assert.equal(prompts[0].text, "Scan with QQ to sign in to QQ Music");
   assert.equal(prompts[0].qr.includes("cookie"), false);
@@ -209,6 +223,8 @@ test("QQ scan sign-in stores the session and never asks for a cookie", async () 
   assert.equal(seen.login.comm.tmeLoginType, "2");
   assert.equal(seen.login.comm.ct, "11");
   assert.equal(seen.login["QQConnectLogin.LoginServer.QQLogin"].param.code, "oauth-code");
+  assert.match(seen.authorizeCookie, /(?:^|;\s*)p_skey=psk-1(?:;|$)/);
+  assert.match(seen.loginJump, /\/oauth2\.0\/login_jump/);
 });
 
 test("playlists keep liked songs fixed and collected lists saved", async () => {

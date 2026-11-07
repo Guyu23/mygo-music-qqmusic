@@ -311,16 +311,36 @@ async function readJson(response) {
   return parseJson(await response.text());
 }
 
+function splitSetCookie(value) {
+  return String(value).split(/,(?=\s*[!#$%&'*+\-.^_`|~0-9A-Za-z]+=)/);
+}
+
 function absorbCookies(response, jar) {
   const list = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
   if (!list.length) {
     const single = response.headers.get("set-cookie");
-    if (single) list.push(single);
+    if (single) list.push(...splitSetCookie(single));
   }
   for (const raw of list) {
-    const pair = raw.split(";")[0];
+    const parts = String(raw).split(";");
+    const pair = parts[0];
     const index = pair.indexOf("=");
-    if (index > 0) jar.set(pair.slice(0, index).trim(), pair.slice(index + 1).trim());
+    if (index <= 0) continue;
+    const name = pair.slice(0, index).trim();
+    const value = pair.slice(index + 1).trim();
+    // A hop may clear a cookie after another hop set the ticket under the same
+    // name for a different domain. Ignoring cleared and expired cookies is what
+    // makes check_sig's p_skey survive the redirect to login_jump.
+    if (!name || !value) continue;
+    const attributes = parts.slice(1).map((part) => part.trim());
+    const maxAge = attributes.find((part) => /^max-age=/i.test(part));
+    if (maxAge && Number(maxAge.slice(maxAge.indexOf("=") + 1)) <= 0) continue;
+    const expires = attributes.find((part) => /^expires=/i.test(part));
+    if (expires) {
+      const when = Date.parse(expires.slice(expires.indexOf("=") + 1).trim());
+      if (Number.isFinite(when) && when <= Date.now()) continue;
+    }
+    jar.set(name, value);
   }
 }
 
@@ -624,13 +644,13 @@ async function pollQr(qrsig) {
     from_ui: "1",
     ptlang: "2052",
     action: `0-0-${Date.now()}`,
-    js_ver: "21082415",
+    js_ver: "20102616",
     js_type: "1",
-    login_sig: "",
     pt_uistyle: "40",
     aid: "716027609",
     daid: "383",
     pt_3rd_aid: CLIENT_ID,
+    has_onekey: "1",
   };
   for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
   const response = await request(url, {
@@ -695,7 +715,7 @@ async function exchange(checkUrl) {
     redirect: "manual",
     headers: {
       "user-agent": UA,
-      referer: "https://graph.qq.com/",
+      referer: "https://graph.qq.com/oauth2.0/authorize",
       origin: "https://graph.qq.com",
       cookie: jarHeader(jar),
       "content-type": "application/x-www-form-urlencoded",
@@ -754,7 +774,10 @@ export async function signIn() {
     const status = await pollQr(qrsig);
     if (status.code === "0" && status.url) {
       await exchange(status.url);
-      return;
+      const who = await account();
+      if (who) return who;
+      const session = load();
+      return { id: session.musicid, name: session.name || t("QQ Music"), page: "me" };
     }
     if (status.code === "65") problem("signIn", "The QR code expired. Sign in again.");
     if (status.code === "68") problem("signIn", "QQ refused the login");
