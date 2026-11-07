@@ -1,14 +1,16 @@
 {
   "id": "qqmusic",
   "name": "QQ Music",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "minAppVersion": "0.1.8",
   "main": "index.js",
   "playback": "stream",
   "permissions": {
     "network": [
       "ssl.ptlogin2.qq.com",
+      "ptlogin2.qq.com",
       "ssl.ptlogin2.graph.qq.com",
+      "ptlogin2.graph.qq.com",
       "graph.qq.com",
       "u.y.qq.com",
       "u6.y.qq.com",

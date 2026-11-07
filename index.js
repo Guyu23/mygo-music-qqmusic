@@ -592,10 +592,8 @@ function rawQuery(url, key) {
   const query = String(url).split("?")[1]?.split("#")[0] || "";
   for (const part of query.split("&")) {
     const index = part.indexOf("=");
-    if (index < 0) continue;
-    const name = decodeURIComponent(part.slice(0, index));
-    if (name !== key) continue;
-    return decodeURIComponent(part.slice(index + 1).replace(/\+/g, "%2B"));
+    if (index < 0 || part.slice(0, index) !== key) continue;
+    return part.slice(index + 1);
   }
   return "";
 }
@@ -642,40 +640,41 @@ async function pollQr(qrsig) {
   return { code: args[0] || "", url: args[2] || "" };
 }
 
+async function followCookies(startUrl, jar) {
+  let current = startUrl;
+  let referer = PT_REFERER;
+  for (let hop = 0; hop < 5; hop++) {
+    const headers = { "user-agent": UA, referer };
+    if (jar.size) headers.cookie = jarHeader(jar);
+    const response = await request(current, { redirect: "manual", headers });
+    absorbCookies(response, jar);
+    const location = response.headers.get("location");
+    if (!location || response.status < 300 || response.status >= 400) return response;
+    referer = current;
+    current = new URL(location, current).href;
+  }
+  return null;
+}
+
 async function exchange(checkUrl) {
   const uin = rawQuery(checkUrl, "uin");
   const ptsigx = rawQuery(checkUrl, "ptsigx");
   if (!uin || !ptsigx) failLogin("callback");
-  const check = new URL("https://ssl.ptlogin2.graph.qq.com/check_sig");
-  const query = {
-    uin,
-    pttype: "1",
-    service: "ptqrlogin",
-    nodirect: "0",
-    ptsigx,
-    s_url: "https://graph.qq.com/oauth2.0/login_jump",
-    ptlang: "2052",
-    ptredirect: "100",
-    aid: "716027609",
-    daid: "383",
-    j_later: "0",
-    low_login_hour: "0",
-    regmaster: "0",
-    pt_login_type: "3",
-    pt_aid: "0",
-    pt_aaid: "16",
-    pt_light: "0",
-    pt_3rd_aid: CLIENT_ID,
-  };
-  for (const [key, value] of Object.entries(query)) check.searchParams.set(key, value);
-  const checked = await request(check, {
-    redirect: "manual",
-    headers: { "user-agent": UA, referer: PT_REFERER },
-  });
+  const check =
+    "https://ssl.ptlogin2.graph.qq.com/check_sig?uin=" +
+    uin +
+    "&pttype=1&service=ptqrlogin&nodirect=0&ptsigx=" +
+    ptsigx +
+    "&s_url=" +
+    encodeURIComponent("https://graph.qq.com/oauth2.0/login_jump") +
+    "&ptlang=2052&ptredirect=100&aid=716027609&daid=383" +
+    "&j_later=0&low_login_hour=0&regmaster=0&pt_login_type=3&pt_aid=0&pt_aaid=16&pt_light=0" +
+    "&pt_3rd_aid=" +
+    CLIENT_ID;
   const jar = new Map();
-  absorbCookies(checked, jar);
+  await followCookies(check, jar);
   const pSkey = jar.get("p_skey");
-  if (!pSkey) failLogin("p_skey");
+  if (!pSkey) failLogin(`p_skey missing: ${[...jar.keys()].join(",") || "no cookies"}`);
   const form = new URLSearchParams({
     response_type: "code",
     client_id: CLIENT_ID,
@@ -779,11 +778,12 @@ export async function signOut() {
 }
 
 async function loginWithCode(code) {
+  const key = "QQConnectLogin.LoginServer.QQLogin";
   const body = {
     comm: {
-      ct: 11,
-      cv: 13020508,
-      v: 13020508,
+      ct: "11",
+      cv: "13020508",
+      v: "13020508",
       tmeAppID: "qqmusic",
       format: "json",
       inCharset: "utf-8",
@@ -791,7 +791,7 @@ async function loginWithCode(code) {
       uid: deviceId(),
       tmeLoginType: "2",
     },
-    req_0: {
+    [key]: {
       module: "QQConnectLogin.LoginServer",
       method: "QQLogin",
       param: { code },
@@ -808,8 +808,10 @@ async function loginWithCode(code) {
     body: JSON.stringify(body),
   });
   const json = await readJson(response);
-  const payload = json.req_0;
-  if (payload?.code === 1000 || json.code === 1000 || !payload || payload.code !== 0) failLogin("QQLogin");
+  const payload = json[key] || json.req_0;
+  if (payload?.code === 1000 || json.code === 1000 || !payload || payload.code !== 0) {
+    failLogin(`QQLogin ${payload?.code ?? json.code ?? "empty"}`);
+  }
   return payload.data || {};
 }
 

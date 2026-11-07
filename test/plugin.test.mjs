@@ -60,7 +60,8 @@ globalThis.fetch = async (input, init = {}) => {
     const method = call?.method || "";
     if (module === "QQConnectLogin.LoginServer") {
       seen.login = JSON.parse(init.body);
-      return jsonResponse({ code: 0, req_0: { code: 0, data: { musicid: "123456", musickey: "key-1", nick: "周韬" } } });
+      const key = Object.keys(seen.login).find((name) => name !== "comm");
+      return jsonResponse({ code: 0, [key]: { code: 0, data: { musicid: "123456", musickey: "key-1", nick: "周韬" } } });
     }
     if (method === "GetAll") {
       return jsonResponse({
@@ -206,8 +207,8 @@ test("QQ scan sign-in stores the session and never asks for a cookie", async () 
   assert.match(seen.check, /[?&]uin=123(?:&|$)/);
   assert.match(seen.check, /[?&]ptsigx=abc(?:&|$)/);
   assert.equal(seen.login.comm.tmeLoginType, "2");
-  assert.equal(seen.login.comm.ct, 11);
-  assert.equal(seen.login.req_0.param.code, "oauth-code");
+  assert.equal(seen.login.comm.ct, "11");
+  assert.equal(seen.login["QQConnectLogin.LoginServer.QQLogin"].param.code, "oauth-code");
 });
 
 test("playlists keep liked songs fixed and collected lists saved", async () => {
