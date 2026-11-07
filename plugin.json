@@ -1,0 +1,51 @@
+{
+  "id": "qqmusic",
+  "name": "QQ Music",
+  "version": "0.1.0",
+  "minAppVersion": "0.1.8",
+  "main": "index.js",
+  "playback": "stream",
+  "permissions": {
+    "network": [
+      "ssl.ptlogin2.qq.com",
+      "ssl.ptlogin2.graph.qq.com",
+      "graph.qq.com",
+      "u.y.qq.com",
+      "u6.y.qq.com",
+      "c.y.qq.com",
+      "c6.y.qq.com",
+      "y.qq.com",
+      "*.y.qq.com",
+      "y.gtimg.cn",
+      "*.gtimg.cn",
+      "*.tc.qq.com",
+      "*.music.tc.qq.com",
+      "*.stream.qqmusic.qq.com",
+      "*.qqmusic.qq.com"
+    ]
+  },
+  "requestHeaders": [
+    {
+      "hosts": [
+        "*.tc.qq.com",
+        "*.music.tc.qq.com",
+        "*.stream.qqmusic.qq.com",
+        "*.qqmusic.qq.com",
+        "y.gtimg.cn",
+        "*.gtimg.cn",
+        "*.y.qq.com"
+      ],
+      "headers": {
+        "referer": "https://y.qq.com/",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+      }
+    }
+  ],
+  "navigation": [
+    { "builtin": "home" },
+    { "title": "Listening Modes", "builtin": "stations" },
+    { "builtin": "liked" },
+    { "title": "History", "page": "history", "icon": "calendar" },
+    { "title": "Charts", "page": "charts", "icon": "chart" }
+  ]
+}
